@@ -16,7 +16,17 @@ function check(cond: unknown, msg: string) {
   console.log(`PASS  ${msg}`);
 }
 
+function assertLocalOnly() {
+  const uri = process.env.MONGODB_URI ?? "";
+  const host = uri.replace(/^mongodb(\+srv)?:\/\//, "").split(/[/?]/)[0].split("@").pop() ?? "";
+  const local = /^(127\.0\.0\.1|localhost)(:\d+)?$/.test(host);
+  if (!local) throw new Error("smoke-local refuses to run: MONGODB_URI is not a local database");
+  if (process.env.RAZORPAY_MODE === "live") throw new Error("smoke-local refuses to run in live mode");
+  if (!/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(BASE)) throw new Error("smoke-local only targets a local server");
+}
+
 async function main() {
+  assertLocalOnly();
   await mongoose.connect(process.env.MONGODB_URI!, { dbName: process.env.MONGODB_DB ?? "aiseekho" });
   const product = (await Product.findOne({ slug: "ai-se-smart-kaam" }).lean())!;
   const customer = await Customer.findOneAndUpdate({ email: "smoke@example.com" }, { $set: { name: "Smoke Test" } }, { upsert: true, returnDocument: "after" });

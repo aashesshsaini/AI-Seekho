@@ -7,6 +7,7 @@ import { Order, RecoveryRequest } from "@/lib/models/commerce";
 import { Enquiry } from "@/lib/models/content";
 import { AuditLog } from "@/lib/models/system";
 import { getEmailSender } from "@/lib/email";
+import { deliveryUsageThisMonth, storageHealth, NETLIFY_RATES } from "@/lib/monitoring";
 import { Flash, PageTitle, StatusPill, Table, Td } from "@/components/admin/ui";
 
 export const metadata = { title: "Dashboard" };
@@ -17,13 +18,15 @@ export default async function AdminDashboard({ searchParams }: PageProps<"/admin
   await connectDb();
   const mode = env.razorpayMode;
 
-  const [revenueAgg, counts, recent, newEnquiries, pendingRecovery, activity] = await Promise.all([
+  const [revenueAgg, counts, recent, newEnquiries, pendingRecovery, activity, files, usage] = await Promise.all([
     Order.aggregate<{ _id: null; total: number; n: number }>([{ $match: { status: "paid", mode } }, { $group: { _id: null, total: { $sum: "$amountPaise" }, n: { $sum: 1 } } }]),
     Order.aggregate<{ _id: string; n: number }>([{ $match: { mode } }, { $group: { _id: "$status", n: { $sum: 1 } } }]),
     admin.role === "owner" ? Order.find({ mode }).sort({ createdAt: -1 }).limit(8).lean() : Promise.resolve([]),
     Enquiry.countDocuments({ status: "new" }),
     RecoveryRequest.countDocuments({ outcome: "pending_admin" }),
     admin.role === "owner" ? AuditLog.find().sort({ createdAt: -1 }).limit(8).lean() : Promise.resolve([]),
+    storageHealth(),
+    deliveryUsageThisMonth(),
   ]);
   const by = Object.fromEntries(counts.map((c) => [c._id, c.n])) as Record<string, number>;
   const revenue = revenueAgg[0]?.total ?? 0;
@@ -33,7 +36,12 @@ export default async function AdminDashboard({ searchParams }: PageProps<"/admin
     { label: "Razorpay", ok: isRazorpayConfigured(), detail: isRazorpayConfigured() ? `${mode.toUpperCase()} mode` : "Keys not set" },
     { label: "Webhook secret", ok: Boolean(env.razorpayWebhookSecret), detail: env.razorpayWebhookSecret ? "Configured" : "Not set" },
     { label: "Email delivery", ok: getEmailSender().configured, detail: getEmailSender().configured ? "Active" : "Not configured" },
-    { label: "Private storage", ok: true, detail: env.storageDriver },
+    {
+      label: "Product files",
+      ok: files.expected > 0 && files.present === files.expected && files.mismatched.length === 0,
+      detail: files.error ? `Error: ${files.error}` : `${files.present}/${files.expected} in ${files.driver}${files.mismatched.length ? ` · size mismatch: ${files.mismatched.join(", ")}` : ""}`,
+    },
+    { label: "Staging gate", ok: Boolean(process.env.STAGING_GATE_USER), detail: process.env.STAGING_GATE_USER ? "On (Basic Auth, noindex)" : "Off — site is public" },
   ];
 
   return (
@@ -56,7 +64,7 @@ export default async function AdminDashboard({ searchParams }: PageProps<"/admin
         </div>
       )}
 
-      <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         {health.map((h) => (
           <div key={h.label} className="rounded-xl border border-line px-4 py-3 text-sm">
             <span className={h.ok ? "text-success" : "text-warning"}>●</span> <span className="text-fg">{h.label}</span>
@@ -64,6 +72,13 @@ export default async function AdminDashboard({ searchParams }: PageProps<"/admin
           </div>
         ))}
       </div>
+
+      {admin.role === "owner" && (
+        <div className="mt-6 rounded-xl border border-line px-4 py-3 text-sm text-fg-muted">
+          <span className="text-fg">Delivery usage this month:</span> {usage.served} file downloads · {usage.gb.toFixed(2)} GB egress · ≈{usage.estCredits} Netlify
+          credits (download bandwidth only, at {NETLIFY_RATES.creditsPerGB} credits/GB; page traffic, requests and deploys are extra — check Netlify → Usage).
+        </div>
+      )}
 
       <div className="mt-6 flex flex-wrap gap-3 text-sm">
         <Link href="/admin/enquiries" className="rounded-lg border border-line-strong px-3 py-2 text-fg-muted hover:text-fg">{newEnquiries} new enquiries</Link>

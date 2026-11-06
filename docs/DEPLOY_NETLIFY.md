@@ -2,10 +2,8 @@
 
 > Status: configuration prepared, **not yet deployed** — needs your Netlify, MongoDB Atlas and Razorpay accounts.
 
-## 0. Check current limits first (they change)
-- **Netlify pricing / free plan** — https://www.netlify.com/pricing/ . Third-party summaries (Nov 2026) describe a credit-based free plan (~300 credits/month) that **pauses the site when credits run out**, and say commercial use is allowed. Confirm both on Netlify's own page before launch. Each full purchase download (ZIP 10.7 MB, or ~12 MB for all PDFs) is served through a function and counts toward bandwidth.
-- **Netlify Functions limits** — current docs list 6 MB for buffered and 20 MB for streamed responses. Downloads stream, and the largest file is 10.7 MB.
-- **Netlify Blobs** — check storage limits for your plan.
+## 0. Limits, usage estimate and staging-first plan
+Start with **`docs/STAGING.md`**. It covers the official Netlify Free limits (checked 6 Nov 2026): 300 credits/month hard limit with **all projects paused** when exhausted, 20 MB / 60 s streamed responses, and no password protection on Free. It also has the usage estimates for 100/500/1,000 purchases, the monitoring/fallback plan, account setup and the staging test plan.
 
 ## 1. MongoDB Atlas
 1. Create a free cluster (M0) in a Mumbai (ap-south-1) region if available.

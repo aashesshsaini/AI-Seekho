@@ -15,6 +15,10 @@ setupTestDb();
 const files = new Map<string, string>([["ai-se-smart-kaam/v4/test.zip", "ZIP-CONTENT"]]);
 const storage: PrivateStorage = {
   name: "mock",
+  async stat(key) {
+    const v = files.get(key);
+    return v === undefined ? null : { size: v.length };
+  },
   async open(key) {
     const v = files.get(key);
     if (v === undefined) return null;

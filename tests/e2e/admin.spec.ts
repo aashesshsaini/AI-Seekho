@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const EMAIL = process.env.E2E_ADMIN_EMAIL ?? "owner@aiseekho.local";
+const EMAIL = process.env.E2E_ADMIN_EMAIL ?? "";
 const PASSWORD = process.env.E2E_ADMIN_PASSWORD ?? "";
 
 test("admin requires login (server redirect)", async ({ request }) => {
@@ -18,7 +18,7 @@ test("forged admin cookie does not grant access", async ({ page, context, baseUR
 });
 
 test("wrong password is rejected; correct login reaches dashboard", async ({ page, isMobile }) => {
-  test.skip(isMobile || !PASSWORD, "set E2E_ADMIN_PASSWORD to run");
+  test.skip(isMobile || !PASSWORD || !EMAIL, "set E2E_ADMIN_EMAIL and E2E_ADMIN_PASSWORD to run");
   await page.goto("/admin/login");
   await page.getByLabel("Email").fill(EMAIL);
   await page.getByLabel("Password").fill("definitely-wrong-123");

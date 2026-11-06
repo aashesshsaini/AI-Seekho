@@ -14,7 +14,12 @@
     "test:e2e": "playwright test",
     "db:seed": "tsx --env-file-if-exists=.env.local scripts/seed.ts",
     "admin:create": "tsx --env-file-if-exists=.env.local scripts/create-admin.ts",
-    "assets:upload": "tsx --env-file-if-exists=.env.local scripts/upload-assets.ts"
+    "assets:upload": "tsx --env-file-if-exists=.env.local scripts/upload-assets.ts",
+    "check:safety": "bash scripts/check-repo-safety.sh",
+    "staging:init-env": "bash scripts/init-staging-env.sh",
+    "staging:seed": "tsx --env-file=.env.staging.local scripts/seed.ts",
+    "staging:admin": "tsx --env-file=.env.staging.local scripts/create-admin.ts",
+    "staging:upload": "tsx --env-file=.env.staging.local scripts/upload-assets.ts --dir ~/Downloads"
   },
   "dependencies": {
     "@netlify/blobs": "^11.1.7",

@@ -39,7 +39,12 @@ async function main() {
   const uri = process.env.MONGODB_URI;
   if (!uri) throw new Error("MONGODB_URI is not set");
 
-  let password = process.env.ADMIN_PASSWORD ?? "";
+  const host = uri.replace(/^mongodb(\+srv)?:\/\//, "").split(/[/?]/)[0].split("@").pop() ?? "";
+  const isLocal = /^(127\.0\.0\.1|localhost)(:\d+)?$/.test(host);
+  if (process.env.ADMIN_PASSWORD && !isLocal) {
+    throw new Error("ADMIN_PASSWORD env is only allowed for a local database. For staging/production use the hidden prompt.");
+  }
+  let password = isLocal ? (process.env.ADMIN_PASSWORD ?? "") : "";
   if (!password) {
     password = await askHidden("Password (min 12 chars, letters + numbers): ");
     const again = await askHidden("Repeat password: ");

@@ -4,6 +4,9 @@ import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { env } from "../env";
+import { blobStoreOptions } from "./options";
+
+export { blobStoreOptions };
 
 /**
  * Private product storage. Files are never placed in /public; they are only
@@ -12,6 +15,8 @@ import { env } from "../env";
 export interface PrivateStorage {
   readonly name: string;
   open(key: string): Promise<{ body: ReadableStream<Uint8Array>; size: number | null } | null>;
+  /** Existence/size check without reading the object (used by admin health). */
+  stat(key: string): Promise<{ size: number | null } | null>;
 }
 
 export function assertSafeKey(key: string): void {
@@ -38,20 +43,42 @@ export function localStorageDriver(baseDir: string): PrivateStorage {
         return null;
       }
     },
+    async stat(key) {
+      assertSafeKey(key);
+      const full = path.resolve(root, key);
+      if (!full.startsWith(root + path.sep)) throw new Error("Unsafe storage key");
+      try {
+        const s = await stat(full);
+        return s.isFile() ? { size: s.size } : null;
+      } catch {
+        return null;
+      }
+    },
   };
 }
 
 /** Production driver: Netlify Blobs (site-wide store, private by default). */
-export function netlifyBlobsDriver(storeName: string): PrivateStorage {
+
+export function netlifyBlobsDriver(storeName: string, region?: string): PrivateStorage {
+  async function store() {
+    const { getStore } = await import("@netlify/blobs");
+    return getStore(blobStoreOptions(storeName, region));
+  }
   return {
     name: "netlify-blobs",
+    async stat(key) {
+      assertSafeKey(key);
+      const meta = await (await store()).getMetadata(key);
+      if (!meta) return null;
+      return { size: typeof meta.metadata?.size === "number" ? meta.metadata.size : null };
+    },
     async open(key) {
       assertSafeKey(key);
-      const { getStore } = await import("@netlify/blobs");
-      const store = getStore({ name: storeName, consistency: "strong" });
-      const meta = await store.getMetadata(key);
+      const s = await store();
+      const meta = await s.getMetadata(key);
       if (!meta) return null;
-      const body = (await store.get(key, { type: "stream" })) as ReadableStream<Uint8Array> | null;
+      // Streamed straight through to the response — the file is never buffered in memory.
+      const body = (await s.get(key, { type: "stream" })) as ReadableStream<Uint8Array> | null;
       if (!body) return null;
       const size = typeof meta.metadata?.size === "number" ? meta.metadata.size : null;
       return { body, size };
@@ -65,7 +92,15 @@ export function setStorageForTests(s: PrivateStorage | null): void {
   override = s;
 }
 
+/** True when running on Netlify (build or functions). */
+export function isOnNetlify(): boolean {
+  return process.env.NETLIFY === "true" || Boolean(process.env.NETLIFY_BLOBS_CONTEXT) || Boolean(process.env.SITE_ID && process.env.DEPLOY_ID);
+}
+
 export function getStorage(): PrivateStorage {
   if (override) return override;
-  return env.storageDriver === "netlify-blobs" ? netlifyBlobsDriver(env.blobsStore) : localStorageDriver(env.localAssetsDir);
+  if (env.storageDriver === "netlify-blobs") return netlifyBlobsDriver(env.blobsStore, env.blobsRegion);
+  // The local driver must never be used on Netlify (files would have to ship inside the deploy).
+  if (isOnNetlify()) throw new Error("STORAGE_DRIVER must be 'netlify-blobs' on Netlify");
+  return localStorageDriver(env.localAssetsDir);
 }

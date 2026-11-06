@@ -10,7 +10,9 @@ export function FileList({ files }: { files: DownloadFile[] }) {
   if (files.length === 0) {
     return <p className="text-fg-muted">Files abhi attach nahi hui hain. Kripya support se contact kariye.</p>;
   }
+  const hasZip = files.some((f) => f.contentType === "application/zip");
   return (
+    <>
     <ul className="space-y-3">
       {files.map((f, i) => {
         const Icon = f.contentType === "application/zip" ? FileArchive : FileText;
@@ -31,5 +33,12 @@ export function FileList({ files }: { files: DownloadFile[] }) {
         );
       })}
     </ul>
+    {hasZip && (
+      <p className="mt-4 text-sm text-fg-subtle">
+        Internet slow hai? Badi ZIP file ki jagah PDFs ek-ek karke download kariye — har file chhoti hai aur jaldi poori hoti hai. Download beech mein
+        ruk jaye toh page refresh karke dobara try kariye.
+      </p>
+    )}
+    </>
   );
 }

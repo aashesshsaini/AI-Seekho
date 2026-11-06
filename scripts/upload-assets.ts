@@ -48,10 +48,14 @@ async function main() {
     const token = process.env.NETLIFY_AUTH_TOKEN;
     if (!siteID || !token) throw new Error("NETLIFY_SITE_ID and NETLIFY_AUTH_TOKEN are required for netlify-blobs upload");
     const { getStore } = await import("@netlify/blobs");
-    const store = getStore({ name: process.env.BLOBS_STORE ?? "product-files", siteID, token });
+    const { blobStoreOptions } = await import("../src/lib/storage/options");
+    const store = getStore({ ...blobStoreOptions(process.env.BLOBS_STORE ?? "product-files", process.env.BLOBS_REGION), siteID, token });
     for (const v of verified) {
       await store.set(v.key, new Blob([new Uint8Array(v.buf)]), { metadata: { size: v.buf.length, sha256: createHash("sha256").update(v.buf).digest("hex") } });
-      console.log(`uploaded  blobs:${v.key}`);
+      // Read back metadata to prove the object landed with the right size/checksum.
+      const meta = await store.getMetadata(v.key);
+      if (!meta || meta.metadata?.size !== v.buf.length) throw new Error(`Verification after upload failed for ${v.key}`);
+      console.log(`uploaded  blobs:${v.key}  (verified metadata)`);
     }
   }
   console.log(`Done (${driver}). ${verified.length} files.`);

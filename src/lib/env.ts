@@ -69,6 +69,10 @@ export const env = {
   get blobsStore(): string {
     return read("BLOBS_STORE") ?? "product-files";
   },
+  /** Optional. Must match the region used by `npm run assets:upload`. Changing it later does not migrate data. */
+  get blobsRegion(): string | undefined {
+    return read("BLOBS_REGION");
+  },
 
   // Email
   get emailProvider(): "resend" | "none" {

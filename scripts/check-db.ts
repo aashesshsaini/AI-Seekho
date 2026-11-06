@@ -1,0 +1,60 @@
+/**
+ * Diagnoses a MongoDB connection string WITHOUT printing the password.
+ * Usage: npm run staging:check-db   (reads .env.staging.local)
+ */
+import mongoose from "mongoose";
+
+function mask(s: string) {
+  return s.length <= 2 ? "**" : `${s[0]}${"*".repeat(Math.min(8, s.length - 2))}${s[s.length - 1]}`;
+}
+
+async function main() {
+  const uri = process.env.MONGODB_URI ?? "";
+  const db = process.env.MONGODB_DB ?? "aiseekho";
+  const problems: string[] = [];
+
+  if (!uri) throw new Error("MONGODB_URI is empty in .env.staging.local");
+  if (/^["']|["']$/.test(uri)) problems.push("Value is wrapped in quotes — remove the quotes.");
+  if (/\s/.test(uri)) problems.push("Value contains spaces or a line break — re-copy it as one line.");
+  if (/<password>|<db_password>|<username>/i.test(uri)) problems.push("The <password>/<db_password> placeholder is still in the string — replace it with the real password (no angle brackets).");
+  if (!/^mongodb(\+srv)?:\/\//.test(uri)) problems.push("Must start with mongodb+srv:// (copy from Atlas → Connect → Drivers).");
+
+  const m = /^mongodb(?:\+srv)?:\/\/([^:@/]+)(?::([^@]*))?@([^/?]+)/.exec(uri.replace(/^["']|["']$/g, ""));
+  if (!m) {
+    problems.push("Could not find user:password@host — the string format looks wrong.");
+  } else {
+    const [, user, pass = "", host] = m;
+    console.log(`user:     ${decodeURIComponent(user)}`);
+    console.log(`password: ${pass ? `${mask(pass)} (${pass.length} chars as written in the URI)` : "MISSING"}`);
+    console.log(`host:     ${host}`);
+    console.log(`database: ${db}`);
+    if (!pass) problems.push("No password in the string.");
+    // Raw special characters must be percent-encoded inside the password.
+    if (/[@:/?#[\]]/.test(pass) || /%(?![0-9A-Fa-f]{2})/.test(pass)) {
+      problems.push("Password contains characters that must be URL-encoded (@ : / ? # [ ] %). Easiest fix: in Atlas, Edit user → set a new password using only letters and numbers.");
+    }
+  }
+
+  if (problems.length) {
+    console.log("\nProblems found:");
+    for (const p of problems) console.log(`  ✗ ${p}`);
+  }
+
+  console.log("\nConnecting…");
+  try {
+    await mongoose.connect(uri.trim().replace(/^["']|["']$/g, ""), { dbName: db, serverSelectionTimeoutMS: 10_000 });
+    await mongoose.connection.db!.admin().command({ ping: 1 });
+    console.log("✓ Connected and authenticated. This exact string will work in Netlify.");
+  } catch (e) {
+    const msg = (e as Error).message;
+    console.log(`✗ ${msg.includes("bad auth") || msg.includes("Authentication failed") ? "Authentication failed — username or password is wrong for this cluster." : msg.slice(0, 200)}`);
+    process.exitCode = 1;
+  } finally {
+    await mongoose.disconnect();
+  }
+}
+
+main().catch((e) => {
+  console.error(e instanceof Error ? e.message : e);
+  process.exit(1);
+});

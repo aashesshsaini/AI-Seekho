@@ -1,0 +1,12 @@
+# Netlify configuration for AI SEEKHO (Next.js 16 via Netlify's OpenNext-based adapter,
+# which is applied automatically — no plugin entry needed).
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+  NEXT_TELEMETRY_DISABLED = "1"
+
+# Paid product files live in Netlify Blobs (private). Nothing under /public is paid content.
+# Secrets are set in the Netlify UI (Site configuration → Environment variables), never here.

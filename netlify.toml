@@ -1,7 +1,7 @@
 # Netlify configuration for AI SEEKHO (Next.js 16 via Netlify's OpenNext-based adapter,
 # which is applied automatically — no plugin entry needed).
 [build]
-  command = "npm run build"
+  command = "node scripts/netlify-preflight.mjs && npm run build"
   publish = ".next"
 
 [build.environment]

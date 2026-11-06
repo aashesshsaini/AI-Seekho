@@ -49,3 +49,6 @@ next-env.d.ts
 *.zip
 /test-results/
 /playwright-report/
+
+# Netlify CLI build output (contains copied env files)
+.netlify/

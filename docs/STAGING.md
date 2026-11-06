@@ -126,6 +126,15 @@ Never put a secret in a `NEXT_PUBLIC_*` variable; those are shipped to the brows
 
 ---
 
+## 5b. Build preflight (runs automatically on Netlify)
+`netlify.toml` runs `scripts/netlify-preflight.mjs` before `next build`. It **fails the build** (0 credits) if:
+- any local secret file or private folder is present (`.env.local`, `.env.staging.local`, `.private-assets`, `.data`). The Next.js runtime copies `.env` files into the server function, so **always deploy from Git, never `netlify deploy` from your Mac folder**.
+- a required variable is missing; `APP_SECRET` < 32 chars; `NEXT_PUBLIC_SITE_URL` isn't `https://…` without a trailing slash; `MONGODB_URI` is quoted, has whitespace, still contains `<db_password>` or points to localhost.
+- `STORAGE_DRIVER` ≠ `netlify-blobs`; the Razorpay key prefix doesn't match `RAZORPAY_MODE`; `RAZORPAY_MODE=live` without `LIVE_PAYMENTS_APPROVED=yes`.
+- only one of the two gate variables is set, or the gate password is < 12 chars (the gate would silently be off).
+
+An unseeded database no longer breaks the build. Pages appear about 1–2 minutes after `npm run staging:seed`. Seeding **before** pushing is still recommended so the first deploy is complete.
+
 ## 6. Staging test plan (run after accounts are connected)
 
 | # | Test | Pass criteria |

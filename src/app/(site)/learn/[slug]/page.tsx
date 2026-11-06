@@ -9,7 +9,9 @@ import { Badge, ButtonLink } from "@/components/ui";
 
 export async function generateStaticParams() {
   const tutorials = await getPublishedTutorials();
-  return tutorials.map((t) => ({ slug: t.slug }));
+  // Cache Components needs at least one param. An empty/unseeded DB must not break the build;
+  // the placeholder never matches a tutorial, so it renders 404. Real slugs render on demand.
+  return tutorials.length ? tutorials.map((t) => ({ slug: t.slug })) : [{ slug: "__placeholder__" }];
 }
 
 async function find(slug: string) {

@@ -8,7 +8,9 @@ import { Badge, Card } from "@/components/ui";
 import { PRICING_LABEL, VERIFY_LABEL } from "@/lib/labels";
 
 export async function generateStaticParams() {
-  return (await getPublishedTools()).map((t) => ({ slug: t.slug }));
+  const tools = await getPublishedTools();
+  // See learn/[slug]: placeholder keeps an unseeded DB from failing the build (renders 404).
+  return tools.length ? tools.map((t) => ({ slug: t.slug })) : [{ slug: "__placeholder__" }];
 }
 
 async function find(slug: string) {

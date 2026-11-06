@@ -5,6 +5,7 @@ import { stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import { env } from "../env";
 import { blobStoreOptions } from "./options";
+import { isOnNetlify } from "../data/product";
 
 export { blobStoreOptions };
 
@@ -92,10 +93,7 @@ export function setStorageForTests(s: PrivateStorage | null): void {
   override = s;
 }
 
-/** True when running on Netlify (build or functions). */
-export function isOnNetlify(): boolean {
-  return process.env.NETLIFY === "true" || Boolean(process.env.NETLIFY_BLOBS_CONTEXT) || Boolean(process.env.SITE_ID && process.env.DEPLOY_ID);
-}
+export { isOnNetlify };
 
 export function getStorage(): PrivateStorage {
   if (override) return override;

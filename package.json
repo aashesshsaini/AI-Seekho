@@ -20,7 +20,8 @@
     "staging:seed": "tsx --env-file=.env.staging.local scripts/seed.ts",
     "staging:admin": "tsx --env-file=.env.staging.local scripts/create-admin.ts",
     "staging:upload": "tsx --env-file=.env.staging.local scripts/upload-assets.ts --dir ~/Downloads",
-    "staging:check-db": "tsx --env-file=.env.staging.local scripts/check-db.ts"
+    "staging:check-db": "tsx --env-file=.env.staging.local scripts/check-db.ts",
+    "staging:verify": "node --env-file=.env.staging.local node_modules/@playwright/test/cli.js test tests/e2e/navigation.spec.ts"
   },
   "dependencies": {
     "@netlify/blobs": "^11.1.7",

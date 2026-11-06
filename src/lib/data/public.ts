@@ -1,11 +1,10 @@
 import "server-only";
 import { cacheLife, cacheTag } from "next/cache";
 import { connectDb } from "../db";
-import { isDbConfigured } from "../env";
-import { Product } from "../models/commerce";
 import { Service, Tool, Tutorial } from "../models/content";
 import { LEGAL_PAGES, SiteSettings, type LegalSlug } from "../models/system";
-import { PRODUCT_SLUG, seedLegal, seedProduct, seedServices, seedSettings, seedTools, seedTutorials } from "../content/seed";
+import { PRODUCT_SLUG, seedLegal, seedServices, seedSettings, seedTools, seedTutorials } from "../content/seed";
+import { loadProduct, shouldUseSeedFallback, type PublicProduct } from "./product";
 
 /**
  * Public, cache-friendly reads. When MONGODB_URI is not configured (local
@@ -20,41 +19,14 @@ export const TAGS = {
   settings: "settings",
 } as const;
 
-export type PublicProduct = {
-  slug: string;
-  name: string;
-  subtitle: string;
-  shortDescription: string;
-  pricePaise: number;
-  active: boolean;
-  coverImage: string;
-  previewImages: { src: string; alt: string }[];
-  highlights: string[];
-  seoTitle: string;
-  seoDescription: string;
-};
+export type { PublicProduct } from "./product";
 
+/** Cached wrapper. Errors propagate (Next keeps serving the last good page during a failed revalidation). */
 export async function getProduct(slug: string = PRODUCT_SLUG): Promise<PublicProduct | null> {
   "use cache";
   cacheLife("minutes");
   cacheTag(TAGS.product);
-  if (!isDbConfigured()) return slug === seedProduct.slug ? { ...seedProduct } : null;
-  await connectDb();
-  const p = await Product.findOne({ slug }).lean();
-  if (!p) return null;
-  return {
-    slug: p.slug,
-    name: p.name,
-    subtitle: p.subtitle ?? "",
-    shortDescription: p.shortDescription ?? "",
-    pricePaise: p.pricePaise,
-    active: Boolean(p.active),
-    coverImage: p.coverImage || seedProduct.coverImage,
-    previewImages: (p.previewImages ?? []).map((i) => ({ src: i.src, alt: i.alt })),
-    highlights: p.highlights ?? [],
-    seoTitle: p.seoTitle ?? "",
-    seoDescription: p.seoDescription ?? "",
-  };
+  return loadProduct(slug);
 }
 
 export type PublicTutorial = {
@@ -73,7 +45,7 @@ export async function getPublishedTutorials(): Promise<PublicTutorial[]> {
   "use cache";
   cacheLife("minutes");
   cacheTag(TAGS.tutorials);
-  if (!isDbConfigured()) {
+  if (shouldUseSeedFallback()) {
     return seedTutorials
       .filter((t) => t.status === "published")
       .map((t) => ({ ...t, sources: t.sources ?? [], updatedAt: "2026-11-06T00:00:00.000Z" }));
@@ -112,12 +84,12 @@ export async function getPublishedTools(): Promise<PublicTool[]> {
   "use cache";
   cacheLife("minutes");
   cacheTag(TAGS.tools);
-  const rows = isDbConfigured()
-    ? await (async () => {
+  const rows = shouldUseSeedFallback()
+    ? seedTools.filter((t) => t.status === "published")
+    : await (async () => {
         await connectDb();
         return Tool.find({ status: "published" }).sort({ name: 1 }).lean();
-      })()
-    : seedTools.filter((t) => t.status === "published");
+      })();
   return rows.map((t) => ({
     slug: t.slug,
     name: t.name,
@@ -140,7 +112,7 @@ export async function getServices(): Promise<PublicService[]> {
   "use cache";
   cacheLife("minutes");
   cacheTag(TAGS.services);
-  if (!isDbConfigured()) return seedServices.map(({ slug, title, summary, deliverables }) => ({ slug, title, summary, deliverables }));
+  if (shouldUseSeedFallback()) return seedServices.map(({ slug, title, summary, deliverables }) => ({ slug, title, summary, deliverables }));
   await connectDb();
   const rows = await Service.find({ status: "published" }).sort({ sortOrder: 1 }).lean();
   return rows.map((s) => ({ slug: s.slug, title: s.title, summary: s.summary ?? "", deliverables: s.deliverables ?? [] }));
@@ -161,7 +133,7 @@ export async function getSettings(): Promise<PublicSettings> {
   "use cache";
   cacheLife("minutes");
   cacheTag(TAGS.settings);
-  if (!isDbConfigured()) return { ...seedSettings };
+  if (shouldUseSeedFallback()) return { ...seedSettings };
   await connectDb();
   const s = await SiteSettings.findOne({ key: "site" }).lean();
   if (!s) return { ...seedSettings };
@@ -186,7 +158,7 @@ export async function getLegalPage(slug: LegalSlug): Promise<{ title: string; bo
   cacheLife("minutes");
   cacheTag(TAGS.settings);
   const meta = LEGAL_PAGES.find((p) => p.slug === slug)!;
-  if (isDbConfigured()) {
+  if (!shouldUseSeedFallback()) {
     await connectDb();
     const s = await SiteSettings.findOne({ key: "site" }, { legalPages: 1 }).lean();
     const page = s?.legalPages?.find((p) => p.slug === slug);

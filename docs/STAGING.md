@@ -135,6 +135,13 @@ Never put a secret in a `NEXT_PUBLIC_*` variable; those are shipped to the brows
 
 An unseeded database no longer breaks the build. Pages appear about 1–2 minutes after `npm run staging:seed`. Seeding **before** pushing is still recommended so the first deploy is complete.
 
+## 5c. Seed → deploy → verify (order matters)
+1. `npm run staging:init-env` (once), then fill `.env.staging.local` in your editor: `MONGODB_URI`, `STAGING_GATE_USER`, `STAGING_GATE_PASSWORD`.
+2. `npm run staging:check-db` → must print "✓ Connected and authenticated".
+3. `npm run staging:seed` → product **CREATED** (or "already existed"), price ₹199, active=true. Insert-only: never deletes or overwrites orders, prices or edits.
+4. `git push origin main` → the Netlify preflight now **fails the deploy** if the product is missing or inactive (so a 404 product page can't ship again).
+5. `npm run staging:verify` → runs the purchase-journey and navigation tests against the live staging site through the gate.
+
 ## 6. Staging test plan (run after accounts are connected)
 
 | # | Test | Pass criteria |

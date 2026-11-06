@@ -71,6 +71,7 @@ export function SiteHeader() {
   }, [open]);
 
   return (
+    <>
     <header
       className={clsx(
         "sticky top-0 z-50 h-[var(--header-h)] transition-[background,border-color,backdrop-filter] duration-300",
@@ -109,6 +110,9 @@ export function SiteHeader() {
         </div>
       </div>
 
+    </header>
+    {/* Rendered OUTSIDE <header>: the header's backdrop-filter would otherwise become the
+        containing block for this position:fixed panel and collapse it to 0px height. */}
       <div
         id="mobile-menu"
         ref={menuRef}
@@ -135,6 +139,6 @@ export function SiteHeader() {
           </ButtonLink>
         </nav>
       </div>
-    </header>
+    </>
   );
 }

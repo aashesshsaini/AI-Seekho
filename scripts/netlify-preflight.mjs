@@ -18,7 +18,7 @@ const env = (k) => (process.env[k] ?? "").trim();
 
 // 1) Local secret files / private data must never be packaged into functions.
 //    (The Next.js runtime copies .env files into the server function bundle.)
-for (const f of [".env", ".env.local", ".env.production", ".env.production.local", ".env.staging.local", ".private-assets", ".data"]) {
+for (const f of process.env.PREFLIGHT_TEST_ALLOW_LOCALHOST === "1" ? [] : [".env", ".env.local", ".env.production", ".env.production.local", ".env.staging.local", ".private-assets", ".data"]) {
   if (existsSync(f)) errors.push(`"${f}" exists in the build directory. Deploy from Git (it is gitignored), not from a local folder with secrets.`);
 }
 
@@ -27,7 +27,7 @@ for (const k of ["NEXT_PUBLIC_SITE_URL", "APP_SECRET", "MONGODB_URI", "MONGODB_D
   if (!env(k)) errors.push(`${k} is not set`);
 }
 if (env("APP_SECRET") && env("APP_SECRET").length < 32) errors.push("APP_SECRET must be at least 32 characters");
-if (env("NEXT_PUBLIC_SITE_URL") && !/^https:\/\/[^/]+$/.test(env("NEXT_PUBLIC_SITE_URL"))) {
+if (env("NEXT_PUBLIC_SITE_URL") && !/^https:\/\/[^/]+$/.test(env("NEXT_PUBLIC_SITE_URL")) && process.env.PREFLIGHT_TEST_ALLOW_LOCALHOST !== "1") {
   errors.push("NEXT_PUBLIC_SITE_URL must look like https://your-site.netlify.app (https, no trailing slash, no path)");
 }
 const uri = env("MONGODB_URI");
@@ -35,7 +35,7 @@ if (uri) {
   if (/^["']|["']$/.test(uri)) errors.push("MONGODB_URI is wrapped in quotes — remove them");
   if (/\s/.test(uri)) errors.push("MONGODB_URI contains whitespace/newline");
   if (/<(db_)?password>/i.test(uri)) errors.push("MONGODB_URI still contains the <db_password> placeholder");
-  if (/127\.0\.0\.1|localhost/.test(uri)) errors.push("MONGODB_URI points to localhost — use the Atlas connection string");
+  if (/127\.0\.0\.1|localhost/.test(uri) && process.env.PREFLIGHT_TEST_ALLOW_LOCALHOST !== "1") errors.push("MONGODB_URI points to localhost — use the Atlas connection string");
 }
 if (env("STORAGE_DRIVER") && env("STORAGE_DRIVER") !== "netlify-blobs") errors.push('STORAGE_DRIVER must be "netlify-blobs" on Netlify');
 
@@ -62,10 +62,44 @@ for (const [k, v] of Object.entries(process.env)) {
   if (k.startsWith("NEXT_PUBLIC_") && typeof v === "string" && /mongodb(\+srv)?:\/\//.test(v)) errors.push(`${k} contains a database URI`);
 }
 
-for (const w of warnings) console.log(`preflight warning: ${w}`);
-if (errors.length) {
-  console.error("\npreflight FAILED — fix these in Netlify → Project configuration → Environment variables:");
-  for (const e of errors) console.error(`  ✗ ${e}`);
-  process.exit(1);
+function finish(extra = []) {
+  for (const w of warnings) console.log(`preflight warning: ${w}`);
+  const all = [...errors, ...extra];
+  if (all.length) {
+    console.error("\npreflight FAILED:");
+    for (const e of all) console.error(`  ✗ ${e}`);
+    process.exit(1);
+  }
+  console.log(`preflight OK (context=${process.env.CONTEXT ?? "unknown"}, payments=${mode}, gate=${gu ? "on" : "off"})`);
 }
-console.log(`preflight OK (context=${process.env.CONTEXT ?? "unknown"}, payments=${mode}, gate=${gu ? "on" : "off"})`);
+
+if (errors.length) finish();
+
+// 6) Database content: the purchase journey needs the canonical product, active, with its files' metadata.
+//    Without it every "Get the AI Playbook" CTA leads to a 404 — fail the deploy instead.
+const PRODUCT_SLUG = "ai-se-smart-kaam";
+const dbErrors = [];
+try {
+  const { default: mongoose } = await import("mongoose");
+  await mongoose.connect(uri, { dbName: env("MONGODB_DB"), serverSelectionTimeoutMS: 15_000 });
+  const db = mongoose.connection.db;
+  const product = await db.collection("products").findOne({ slug: PRODUCT_SLUG }, { projection: { active: 1, pricePaise: 1 } });
+  if (!product) {
+    dbErrors.push(`Product "${PRODUCT_SLUG}" not found in database "${env("MONGODB_DB")}". Seed it from your Mac: npm run staging:seed (insert-only, safe), then redeploy.`);
+  } else {
+    if (!product.active) dbErrors.push(`Product "${PRODUCT_SLUG}" exists but is INACTIVE — activate it in Admin → Products, then redeploy.`);
+    if (!Number.isSafeInteger(product.pricePaise) || product.pricePaise < 100) dbErrors.push(`Product price is invalid (${product.pricePaise} paise).`);
+    else console.log(`preflight: product "${PRODUCT_SLUG}" active=${product.active} price=₹${product.pricePaise / 100}`);
+    const assets = await db.collection("productassets").countDocuments({ productId: product._id, active: true });
+    if (assets < 5) warnings.push(`Only ${assets}/5 product file records — run npm run staging:seed (downloads need them).`);
+  }
+  await mongoose.disconnect();
+} catch (e) {
+  const msg = String(e?.message ?? e);
+  dbErrors.push(
+    /bad auth|Authentication failed/i.test(msg)
+      ? "MongoDB rejected the username/password in MONGODB_URI (check with: npm run staging:check-db)."
+      : `Could not reach MongoDB: ${msg.replace(/mongodb(\+srv)?:\/\/[^\s]+/g, "mongodb://***").slice(0, 160)}`,
+  );
+}
+finish(dbErrors);

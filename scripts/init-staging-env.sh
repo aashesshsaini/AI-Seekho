@@ -17,6 +17,10 @@ NETLIFY_AUTH_TOKEN=
 STORAGE_DRIVER=netlify-blobs
 BLOBS_STORE=product-files
 RAZORPAY_MODE=test
+# 3) Staging site + gate (same values you set in Netlify) — used by `npm run staging:verify`.
+STAGING_URL=https://ai-seekho.netlify.app
+STAGING_GATE_USER=
+STAGING_GATE_PASSWORD=
 TPL
 chmod 600 "$f"
 echo "Created $f (permissions 600). Open it in your editor and fill the values."

@@ -1,63 +1,30 @@
 /**
- * Seeds / syncs the database. Safe to run repeatedly:
- *  - never overwrites an existing product price, active flag or edited content
- *  - inserts missing tools/tutorials/services/settings
- *  - syncs product asset metadata (checksums) for the approved v4 package
- * Usage: npm run db:seed
+ * Idempotent, non-destructive seed (see src/lib/content/run-seed.ts).
+ * Usage: npm run db:seed (local) · npm run staging:seed (reads .env.staging.local)
  */
 import mongoose from "mongoose";
-import { Product, ProductAsset } from "../src/lib/models/commerce";
-import { Service, Tool, Tutorial } from "../src/lib/models/content";
-import { SiteSettings } from "../src/lib/models/system";
-import * as models from "../src/lib/models/commerce";
-import * as content from "../src/lib/models/content";
-import * as system from "../src/lib/models/system";
-import { seedAssets, seedLegal, seedProduct, seedServices, seedSettings, seedTools, seedTutorials } from "../src/lib/content/seed";
+import { runSeed } from "../src/lib/content/run-seed";
+
+function describeTarget(uri: string, db: string) {
+  const host = uri.replace(/^mongodb(\+srv)?:\/\//, "").split(/[/?]/)[0].split("@").pop() ?? "?";
+  return `${host} / database "${db}"`;
+}
 
 async function main() {
   const uri = process.env.MONGODB_URI;
   if (!uri) throw new Error("MONGODB_URI is not set");
-  await mongoose.connect(uri, { dbName: process.env.MONGODB_DB ?? "aiseekho" });
-
-  for (const m of [...Object.values(models), ...Object.values(content), ...Object.values(system)]) {
-    if (typeof m === "function" && "syncIndexes" in m) await (m as typeof mongoose.Model).syncIndexes();
-  }
-
-  const { pricePaise, active, ...rest } = seedProduct;
-  const product = await Product.findOneAndUpdate(
-    { slug: seedProduct.slug },
-    { $setOnInsert: { ...rest, pricePaise, active } },
-    { upsert: true, returnDocument: "after" },
-  );
-  console.log(`product: ${product.slug} (price ${product.pricePaise} paise, active ${product.active})`);
-
-  for (const a of seedAssets) {
-    await ProductAsset.updateOne({ storageKey: a.storageKey }, { $set: { ...a, productId: product._id, active: true } }, { upsert: true });
-  }
-  console.log(`assets: ${seedAssets.length} synced`);
-
-  let n = 0;
-  for (const t of seedTools) n += (await Tool.updateOne({ slug: t.slug }, { $setOnInsert: t }, { upsert: true })).upsertedCount;
-  console.log(`tools: ${n} inserted`);
-  n = 0;
-  for (const t of seedTutorials)
-    n += (await Tutorial.updateOne({ slug: t.slug }, { $setOnInsert: { ...t, ...(t.status === "published" ? { publishedAt: new Date("2026-11-06T00:00:00+05:30") } : {}) } }, { upsert: true })).upsertedCount;
-  console.log(`tutorials: ${n} inserted`);
-  n = 0;
-  for (const s of seedServices) n += (await Service.updateOne({ slug: s.slug }, { $setOnInsert: { ...s, status: "published" } }, { upsert: true })).upsertedCount;
-  console.log(`services: ${n} inserted`);
-
-  await SiteSettings.updateOne(
-    { key: "site" },
-    { $setOnInsert: { ...seedSettings, legalPages: Object.entries(seedLegal).map(([slug, body]) => ({ slug, body, approved: false })) } },
-    { upsert: true },
-  );
-  console.log("settings: ensured");
+  const db = process.env.MONGODB_DB ?? "aiseekho";
+  console.log(`Seeding ${describeTarget(uri, db)} (insert-only; nothing is deleted or overwritten)`);
+  await mongoose.connect(uri, { dbName: db, serverSelectionTimeoutMS: 15_000 });
+  const r = await runSeed({ syncIndexes: true });
+  console.log(`product: ${r.product.slug} — ${r.product.created ? "CREATED" : "already existed (left unchanged)"} · price ₹${r.product.pricePaise / 100} · active=${r.product.active}`);
+  console.log(`assets metadata: ${r.assetsSynced} synced · tools +${r.toolsInserted} · tutorials +${r.tutorialsInserted} · services +${r.servicesInserted} · settings ${r.settingsCreated ? "created" : "kept"}`);
+  if (!r.product.active) console.log("⚠ Product exists but is INACTIVE — activate it in Admin → Products (the page shows 'not available').");
   await mongoose.disconnect();
 }
 
 main().catch(async (e) => {
-  console.error(e instanceof Error ? e.message : e);
+  console.error(e instanceof Error ? e.message.replace(/mongodb(\+srv)?:\/\/[^\s]+/g, "mongodb://***") : e);
   await mongoose.disconnect();
   process.exit(1);
 });

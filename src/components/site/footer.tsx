@@ -35,7 +35,12 @@ const COLUMNS = [
 
 export async function SiteFooter() {
   "use cache";
-  const settings = await getSettings();
+  // A failed settings read must not take down every page — render without the support email.
+  const settings = await getSettings().catch(() => ({
+    tagline: "Learn. Create. Automate.",
+    supportEmail: "",
+    business: { legalName: "" },
+  }));
   return (
     <footer className="hairline-top mt-auto border-t border-line bg-ink-950/60">
       <div className="container-page grid gap-12 py-16 md:grid-cols-[1.4fr_repeat(3,1fr)]">

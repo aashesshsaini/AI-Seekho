@@ -1,6 +1,6 @@
 import "server-only";
 import { cacheLife, cacheTag } from "next/cache";
-import { connectDb } from "../db";
+import { connectDb, dbRead } from "../db";
 import { Service, Tool, Tutorial } from "../models/content";
 import { LEGAL_PAGES, SiteSettings, type LegalSlug } from "../models/system";
 import { PRODUCT_SLUG, seedLegal, seedServices, seedSettings, seedTools, seedTutorials } from "../content/seed";
@@ -50,8 +50,10 @@ export async function getPublishedTutorials(): Promise<PublicTutorial[]> {
       .filter((t) => t.status === "published")
       .map((t) => ({ ...t, sources: t.sources ?? [], updatedAt: "2026-11-06T00:00:00.000Z" }));
   }
-  await connectDb();
-  const rows = await Tutorial.find({ status: "published" }).sort({ publishedAt: -1 }).lean();
+  const rows = await dbRead(async () => {
+    await connectDb();
+    return Tutorial.find({ status: "published" }).sort({ publishedAt: -1 }).lean();
+  });
   return rows.map((t) => ({
     slug: t.slug,
     title: t.title,
@@ -86,10 +88,10 @@ export async function getPublishedTools(): Promise<PublicTool[]> {
   cacheTag(TAGS.tools);
   const rows = shouldUseSeedFallback()
     ? seedTools.filter((t) => t.status === "published")
-    : await (async () => {
+    : await dbRead(async () => {
         await connectDb();
         return Tool.find({ status: "published" }).sort({ name: 1 }).lean();
-      })();
+      });
   return rows.map((t) => ({
     slug: t.slug,
     name: t.name,
@@ -113,8 +115,10 @@ export async function getServices(): Promise<PublicService[]> {
   cacheLife("minutes");
   cacheTag(TAGS.services);
   if (shouldUseSeedFallback()) return seedServices.map(({ slug, title, summary, deliverables }) => ({ slug, title, summary, deliverables }));
-  await connectDb();
-  const rows = await Service.find({ status: "published" }).sort({ sortOrder: 1 }).lean();
+  const rows = await dbRead(async () => {
+    await connectDb();
+    return Service.find({ status: "published" }).sort({ sortOrder: 1 }).lean();
+  });
   return rows.map((s) => ({ slug: s.slug, title: s.title, summary: s.summary ?? "", deliverables: s.deliverables ?? [] }));
 }
 
@@ -134,8 +138,10 @@ export async function getSettings(): Promise<PublicSettings> {
   cacheLife("minutes");
   cacheTag(TAGS.settings);
   if (shouldUseSeedFallback()) return { ...seedSettings };
-  await connectDb();
-  const s = await SiteSettings.findOne({ key: "site" }).lean();
+  const s = await dbRead(async () => {
+    await connectDb();
+    return SiteSettings.findOne({ key: "site" }).lean();
+  });
   if (!s) return { ...seedSettings };
   return {
     brandName: s.brandName ?? seedSettings.brandName,
@@ -159,8 +165,10 @@ export async function getLegalPage(slug: LegalSlug): Promise<{ title: string; bo
   cacheTag(TAGS.settings);
   const meta = LEGAL_PAGES.find((p) => p.slug === slug)!;
   if (!shouldUseSeedFallback()) {
-    await connectDb();
-    const s = await SiteSettings.findOne({ key: "site" }, { legalPages: 1 }).lean();
+    const s = await dbRead(async () => {
+      await connectDb();
+      return SiteSettings.findOne({ key: "site" }, { legalPages: 1 }).lean();
+    });
     const page = s?.legalPages?.find((p) => p.slug === slug);
     if (page?.body) {
       return { title: meta.title, body: page.body, approved: Boolean(page.approved), updatedAt: page.updatedAt ? new Date(page.updatedAt).toISOString() : null };

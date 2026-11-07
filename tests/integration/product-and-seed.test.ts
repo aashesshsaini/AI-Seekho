@@ -44,7 +44,10 @@ describe("product loading (root cause of the live 404)", () => {
     vi.spyOn(Product, "findOne").mockImplementation(() => {
       throw new Error("connection reset");
     });
-    await expect(loadProduct(PRODUCT_SLUG)).rejects.toThrow("connection reset");
+    const err = await loadProduct(PRODUCT_SLUG).catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err.name).toBe("DatabaseError"); // plain error → product error page, never a 404
+    expect(err.message).toContain("connection reset");
   });
 
   it("never serves sample data on Netlify when MONGODB_URI is missing", () => {

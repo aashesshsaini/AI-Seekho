@@ -14,8 +14,10 @@ import { formatINR, paiseToRupeeString } from "@/lib/money";
 import { PRODUCT_SLUG } from "@/lib/content/seed";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const p = await getProduct(PRODUCT_SLUG);
-  if (!p) return {};
+  // Metadata must not turn a temporary DB failure into a whole-page crash; the page body
+  // then shows the product error boundary ("temporarily unavailable"), never a 404.
+  const p = await getProduct(PRODUCT_SLUG).catch(() => null);
+  if (!p) return { title: { absolute: "AI SE SMART KAAM — The Practical AI Playbook" }, alternates: { canonical: `/products/${PRODUCT_SLUG}` } };
   const title = p.seoTitle || `${p.name} — The Practical AI Playbook`;
   const description = p.seoDescription || p.shortDescription;
   return {

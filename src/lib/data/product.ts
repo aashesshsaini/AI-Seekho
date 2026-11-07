@@ -1,4 +1,4 @@
-import { connectDb } from "../db";
+import { connectDb, dbRead } from "../db";
 import { isDbConfigured } from "../env";
 import { Product } from "../models/commerce";
 import { seedProduct } from "../content/seed";
@@ -41,8 +41,10 @@ export function shouldUseSeedFallback(): boolean {
  */
 export async function loadProduct(slug: string): Promise<PublicProduct | null> {
   if (shouldUseSeedFallback()) return slug === seedProduct.slug ? { ...seedProduct } : null;
-  await connectDb();
-  const p = await Product.findOne({ slug }).lean();
+  const p = await dbRead(async () => {
+    await connectDb();
+    return Product.findOne({ slug }).lean();
+  });
   if (!p) return null;
   return {
     slug: p.slug,
